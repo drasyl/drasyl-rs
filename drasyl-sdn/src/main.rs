@@ -92,7 +92,7 @@ async fn run_sdn_node(
 }
 
 async fn show_status() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-    let client = RestApiClient {};
+    let client = RestApiClient::new();
     
     match client.status().await {
         Some(status) => {

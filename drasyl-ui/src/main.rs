@@ -9,24 +9,27 @@ use winit::{
     event_loop::EventLoop,
 };
 use tokio::time::{self, Duration};
-use drasyl_sdn::rest_api::load_auth_token;
+use drasyl_sdn::rest_api;
+use drasyl_sdn::rest_api::{Status};
+use arboard::Clipboard;
 
-#[derive(Debug)]
 enum UserEvent {
     TrayIconEvent(TrayIconEvent),
     MenuEvent(MenuEvent),
+    Status(Status),
 }
 
+#[derive(Default)]
 struct DrasylUI {
     tray_icon: Option<TrayIcon>,
-    quit_id: Option<MenuId>,
+    address_item: Option<MenuItem>,
+    status: Option<Status>,
 }
 
 impl DrasylUI {
-    fn new() -> DrasylUI {
-        DrasylUI {
-            tray_icon: None,
-            quit_id: None,
+    fn new() -> Self {
+        Self {
+            .. Default::default()
         }
     }
 
@@ -46,10 +49,11 @@ impl DrasylUI {
         let menu = Menu::new();
 
         // address
-        let item = MenuItem::new("My address: 643e446204d90ac73d00bc51ed29243d1628b062dc1d62dca2b5fc70f45b1de1", true, None);
+        let item = MenuItem::new("Public key: ...", false, None);
         if let Err(e) = menu.append(&item) {
             panic!("{e:?}");
         }
+        self.address_item = Some(item);
 
         // separator
         if let Err(e) = menu.append(&PredefinedMenuItem::separator()) {
@@ -103,11 +107,25 @@ impl ApplicationHandler<UserEvent> for DrasylUI {
     }
 
     fn user_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, event: UserEvent) {
-        println!("{event:?}");
+        // println!("{event:?}");
         match event {
             UserEvent::MenuEvent(menu_event) => {
-                if Some(menu_event.id) == self.quit_id {
-                    event_loop.exit();
+                if let Some(menu) = self.address_item.as_mut() {
+                    if menu_event.id == menu.id() {
+                        if let Some(status) = self.status.as_ref() {
+                            if let Ok(mut clipboard) = Clipboard::new() {
+                                let _ = clipboard.set_text(status.opts.id.pk.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+            UserEvent::Status(status) => {
+                let pk = status.opts.id.pk.clone();
+                self.status = Some(status);
+                if let Some(menu) = self.address_item.as_mut() {
+                    menu.set_text(format!("Public key: {}", pk));
+                    menu.set_enabled(true);
                 }
             }
             _ => {}
@@ -116,23 +134,8 @@ impl ApplicationHandler<UserEvent> for DrasylUI {
 }
 
 fn main() {
-    // Starte Tokio Runtime
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .unwrap();
-
-    // Starte Background-Job
-    rt.spawn(async {
-        let mut interval = time::interval(Duration::from_secs(5));
-        loop {
-            interval.tick().await;
-            println!("Background task running...");
-        }
-    });
-
     let event_loop = EventLoop::<UserEvent>::with_user_event().build().unwrap();
-
+    
     // set a tray event handler that forwards the event and wakes up the event loop
     let proxy = event_loop.create_proxy();
     TrayIconEvent::set_event_handler(Some(move |event| {
@@ -143,6 +146,26 @@ fn main() {
         proxy.send_event(UserEvent::MenuEvent(event));
     }));
 
+    // Starte Tokio Runtime
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    // Starte Background-Job
+    let proxy = event_loop.create_proxy();
+    rt.spawn(async move {
+        let mut interval = time::interval(Duration::from_secs(5));
+        loop {
+            interval.tick().await;
+
+            let client = rest_api::RestApiClient::new();
+            if let Some(status) = client.status().await {
+                proxy.send_event(UserEvent::Status(status));
+            }
+        }
+    });
+    
     let mut app = DrasylUI::new();
 
     if let Err(err) = event_loop.run_app(&mut app) {
