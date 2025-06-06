@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 use drasyl::identity::Identity;
 use drasyl::util;
 use drasyl_sdn::node::SdnNode;
-use drasyl_sdn::rest_api::{RestApi, load_auth_token};
+use drasyl_sdn::rest_api::{load_auth_token, RestApiServer, RestApiClient, Status};
 use http_body_util::{BodyExt, Empty};
 use hyper::Request;
 use hyper_util::client::legacy::Client;
@@ -55,7 +55,7 @@ async fn run_sdn_node(
     info!("I am {}", id.pk);
 
     let node = Arc::new(SdnNode::start(id, urls).await);
-    let rest_api = RestApi::new(node.clone());
+    let rest_api = RestApiServer::new(node.clone());
 
     let node_clone = node.clone();
 
@@ -92,35 +92,16 @@ async fn run_sdn_node(
 }
 
 async fn show_status() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-    let client = Client::builder(TokioExecutor::new()).build_http();
-    let token_file = util::get_env(
-        "AUTH_FILE",
-        drasyl_sdn::rest_api::AUTH_FILE_DEFAULT.to_string(),
-    );
-    let auth_token = load_auth_token(&token_file)
-        .map_err(|e| format!("Failed to load auth token {}: {}", token_file, e))?;
-
-    let uri = "http://localhost:22527/status"
-        .parse::<hyper::Uri>()
-        .map_err(|e| format!("Failed to parse URI: {}", e))?;
-    let req = Request::builder()
-        .method("GET")
-        .uri(uri)
-        .header("Authorization", format!("Bearer {}", auth_token))
-        .body(Empty::<bytes::Bytes>::new())?;
-
-    let response = client.request(req).await?;
-    let status_code = response.status();
-
-    if status_code.is_success() {
-        let body_bytes = response.into_body().collect().await?.to_bytes();
-        let body_str = String::from_utf8(body_bytes.to_vec())?;
-        let status: drasyl_sdn::rest_api::Status = serde_json::from_str(&body_str)?;
-
-        println!("{}", status);
-    } else {
-        eprintln!("Failed to retrieve status: HTTP {}", status_code);
-        std::process::exit(1);
+    let client = RestApiClient {};
+    
+    match client.status().await {
+        Some(status) => {
+            println!("{}", status);
+        },
+        None => {
+            eprintln!("Failed to retrieve status");
+            std::process::exit(1);
+        }
     }
 
     Ok(())

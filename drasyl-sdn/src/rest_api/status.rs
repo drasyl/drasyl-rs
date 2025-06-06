@@ -1,26 +1,34 @@
+use crate::rest_api::auth::AuthToken;
+use crate::rest_api::server::RestApiServer;
+use crate::rest_api::{load_auth_token, RestApiClient};
 use crate::network::{Network, PhysicalRoutingTable, VirtualRoutingTable};
 use crate::node::SdnNode;
-use crate::rest_api::RestApi;
-use crate::rest_api::auth::AuthToken;
-use axum::Json;
 use axum::extract::State;
+use axum::Json;
 use chrono::{DateTime, Local, Utc};
+use clap::Parser;
 use drasyl::identity::PubKey;
 use drasyl::message::ShortId;
-use drasyl::node::{HELLO_TIMEOUT_DEFAULT, NodeOpts};
+use drasyl::node::{NodeOpts, HELLO_TIMEOUT_DEFAULT};
 use drasyl::peer::{NodePeer, Peer, PeerPathInner, PeerPathKey, PowStatus, SessionKeys, SuperPeer};
+use drasyl::util;
+use http::Request;
+use http_body_util::Empty;
+use http_body_util::BodyExt;
 use humantime::format_duration;
+use hyper_util::client::legacy::Client;
+use hyper_util::rt::TokioExecutor;
 use ipnet::Ipv4Net;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
 use std::net::{Ipv4Addr, SocketAddr};
-use std::sync::Arc;
 use std::sync::atomic::Ordering::SeqCst;
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use url;
 
-impl RestApi {
+impl RestApiServer {
     pub(crate) async fn status(State(sdn_node): State<Arc<SdnNode>>, _: AuthToken) -> Json<Status> {
         // opts
         let opts = sdn_node.drasyl_node().opts().clone();
@@ -56,6 +64,41 @@ impl RestApi {
         Json(status)
     }
 }
+
+impl RestApiClient {
+    pub async fn status(&self) -> Option<Status> {
+        let client = Client::builder(TokioExecutor::new()).build_http();
+        let token_file = util::get_env(
+            "AUTH_FILE",
+            crate::rest_api::AUTH_FILE_DEFAULT.to_string(),
+        );
+        let auth_token = load_auth_token(&token_file)
+            .map_err(|e| format!("Failed to load auth token {}: {}", token_file, e)).unwrap();
+
+        let uri = "http://localhost:22527/status"
+            .parse::<hyper::Uri>()
+            .map_err(|e| format!("Failed to parse URI: {}", e)).unwrap();
+        let req = Request::builder()
+            .method("GET")
+            .uri(uri)
+            .header("Authorization", format!("Bearer {}", auth_token))
+            .body(Empty::<bytes::Bytes>::new()).unwrap();
+
+        let response = client.request(req).await.expect("HTTP request failed");
+        let status_code = response.status();
+
+        if status_code.is_success() {
+            let body_bytes = response.into_body().collect().await.unwrap().to_bytes();
+            let body_str = String::from_utf8(body_bytes.to_vec()).unwrap();
+            let status: crate::rest_api::Status = serde_json::from_str(&body_str).unwrap();
+
+            Some(status)
+        } else {
+            None
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct Status {
     // drasyl
@@ -420,6 +463,13 @@ impl fmt::Display for NetworkStatus {
                 .as_ref()
                 .map_or("None".to_string(), |ip| ip.to_string())
         )?;
+        writeln!(
+            f,
+            "TUN device: {}",
+            self.tun_device
+                .as_ref()
+                .map_or("None".to_string(), |tun_device| tun_device.to_string())
+        )?;
         match &self.virtual_routes {
             Some(virtual_routes) if !virtual_routes.is_empty() => {
                 writeln!(f, "Virtual Routes:")?;
@@ -462,13 +512,6 @@ impl fmt::Display for NetworkStatus {
                 }
             }
         }
-        writeln!(
-            f,
-            "TUN device: {}",
-            self.tun_device
-                .as_ref()
-                .map_or("None".to_string(), |tun_device| tun_device.to_string())
-        )?;
 
         Ok(())
     }
