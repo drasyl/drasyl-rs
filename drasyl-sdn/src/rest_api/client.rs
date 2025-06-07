@@ -1,4 +1,9 @@
-pub struct RestApiClient {
+pub struct RestApiClient {}
+
+impl Default for RestApiClient {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl RestApiClient {

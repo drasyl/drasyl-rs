@@ -23,4 +23,8 @@ pub enum Error {
     /// Token generation failed
     #[error("Failed to generate token: {reason}")]
     TokenGenerationFailed { reason: String },
+
+    /// Status request failed
+    #[error("Failed to get status: {reason}")]
+    StatusRequestFailed { reason: String },
 }

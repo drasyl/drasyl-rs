@@ -2,11 +2,8 @@ use clap::{Parser, Subcommand};
 use drasyl::identity::Identity;
 use drasyl::util;
 use drasyl_sdn::node::SdnNode;
-use drasyl_sdn::rest_api::{load_auth_token, RestApiServer, RestApiClient, Status};
-use http_body_util::{BodyExt, Empty};
-use hyper::Request;
-use hyper_util::client::legacy::Client;
-use hyper_util::rt::TokioExecutor;
+use drasyl_sdn::rest_api::{RestApiClient, RestApiServer};
+use http_body_util::BodyExt;
 use std::sync::Arc;
 use tokio::signal;
 use tracing::info;
@@ -93,13 +90,13 @@ async fn run_sdn_node(
 
 async fn show_status() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
     let client = RestApiClient::new();
-    
+
     match client.status().await {
-        Some(status) => {
+        Ok(status) => {
             println!("{}", status);
-        },
-        None => {
-            eprintln!("Failed to retrieve status");
+        }
+        Err(e) => {
+            eprintln!("Failed to retrieve status: {e}");
             std::process::exit(1);
         }
     }

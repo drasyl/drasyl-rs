@@ -1,17 +1,13 @@
-use tray_icon::menu::MenuId;
-use tray_icon::{
-    menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
-    TrayIcon, TrayIconBuilder, TrayIconEvent,
-};
-use winit::{
-    application::ApplicationHandler
-    ,
-    event_loop::EventLoop,
-};
-use tokio::time::{self, Duration};
-use drasyl_sdn::rest_api;
-use drasyl_sdn::rest_api::{Status};
 use arboard::Clipboard;
+use drasyl_sdn::rest_api;
+use drasyl_sdn::rest_api::Status;
+use tokio::time::{self, Duration};
+use tracing::warn;
+use tray_icon::{
+    TrayIcon, TrayIconBuilder, TrayIconEvent,
+    menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
+};
+use winit::{application::ApplicationHandler, event_loop::EventLoop};
 
 enum UserEvent {
     TrayIconEvent(TrayIconEvent),
@@ -29,18 +25,19 @@ struct DrasylUI {
 impl DrasylUI {
     fn new() -> Self {
         Self {
-            .. Default::default()
+            ..Default::default()
         }
     }
 
     fn new_tray_icon(&mut self) -> TrayIcon {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/examples/dark-icon.png");
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/tray-icon.png");
         let icon = load_icon(std::path::Path::new(path));
 
         TrayIconBuilder::new()
             .with_menu(Box::new(self.new_tray_menu()))
             .with_tooltip("drasyl")
             .with_icon(icon)
+            .with_icon_as_template(true)
             .build()
             .unwrap()
     }
@@ -49,7 +46,11 @@ impl DrasylUI {
         let menu = Menu::new();
 
         // address
-        let item = MenuItem::new("Public key: ...", false, None);
+        let item = MenuItem::new(
+            "Waiting for drasyl service to become available…",
+            false,
+            None,
+        );
         if let Err(e) = menu.append(&item) {
             panic!("{e:?}");
         }
@@ -121,7 +122,7 @@ impl ApplicationHandler<UserEvent> for DrasylUI {
                 }
             }
             UserEvent::Status(status) => {
-                let pk = status.opts.id.pk.clone();
+                let pk = status.opts.id.pk;
                 self.status = Some(status);
                 if let Some(menu) = self.address_item.as_mut() {
                     menu.set_text(format!("Public key: {}", pk));
@@ -134,8 +135,10 @@ impl ApplicationHandler<UserEvent> for DrasylUI {
 }
 
 fn main() {
+    tracing_subscriber::fmt::init();
+
     let event_loop = EventLoop::<UserEvent>::with_user_event().build().unwrap();
-    
+
     // set a tray event handler that forwards the event and wakes up the event loop
     let proxy = event_loop.create_proxy();
     TrayIconEvent::set_event_handler(Some(move |event| {
@@ -160,12 +163,20 @@ fn main() {
             interval.tick().await;
 
             let client = rest_api::RestApiClient::new();
-            if let Some(status) = client.status().await {
+            match client.status().await {
+                Ok(status) => {
+                    let _ = proxy.send_event(UserEvent::Status(status));
+                }
+                Err(e) => {
+                    warn!("Failed to retrieve status: {}", e);
+                }
+            }
+            if let Ok(status) = client.status().await {
                 proxy.send_event(UserEvent::Status(status));
             }
         }
     });
-    
+
     let mut app = DrasylUI::new();
 
     if let Err(err) = event_loop.run_app(&mut app) {

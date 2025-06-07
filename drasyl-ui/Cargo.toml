@@ -5,6 +5,8 @@ edition = "2024"
 
 [dependencies]
 drasyl-sdn = { path = "../drasyl-sdn" }
+tracing = { workspace = true }
+tracing-subscriber  = { workspace = true }
 tokio = { workspace = true }
 tray-icon = "0.20.1"
 image = "0.25.6"
@@ -50,3 +52,9 @@ objc2-app-kit = { version = "0.3.0", default-features = false, features = [
     "NSView",
     "NSWindow",
 ] }
+
+[package.metadata.bundle]
+name = "drasyl UI"
+identifier = "org.drasyl.drasyl-ui"
+icon = ["./drasyl-ui/assets/app-icon*.png"]
+osx_info_plist_exts = ["./drasyl-ui/osx_info_plist_exts/*"]

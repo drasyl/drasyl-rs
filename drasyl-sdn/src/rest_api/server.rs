@@ -1,12 +1,14 @@
-use std::sync::Arc;
-use drasyl::util;
-use tracing::{info, trace};
-use axum::Router;
-use axum::routing::get;
-use tokio::net::TcpListener;
 use crate::node::SdnNode;
 use crate::rest_api;
-use crate::rest_api::{error, load_auth_token, API_LISTEN_DEFAULT, API_TOKEN_LEN_DEFAULT, AUTH_FILE_DEFAULT};
+use crate::rest_api::{
+    API_LISTEN_DEFAULT, API_TOKEN_LEN_DEFAULT, AUTH_FILE_DEFAULT, error, load_auth_token,
+};
+use axum::Router;
+use axum::routing::get;
+use drasyl::util;
+use std::sync::Arc;
+use tokio::net::TcpListener;
+use tracing::{info, trace};
 
 pub struct RestApiServer {
     node: Arc<SdnNode>,

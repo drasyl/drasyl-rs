@@ -1620,7 +1620,6 @@ dependencies = [
  "ipnet",
  "ipnet-trie",
  "net-route",
- "papaya",
  "serde",
  "serde_json",
  "thiserror 2.0.12",
@@ -1669,6 +1668,8 @@ dependencies = [
  "objc2-core-graphics",
  "objc2-foundation 0.3.1",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
  "tray-icon",
  "winit",
 ]
