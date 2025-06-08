@@ -49,6 +49,11 @@ pub fn load_auth_token(token_file: &String) -> Result<String, io::Error> {
                         );
                         return Ok(token);
                     }
+                } else {
+                    trace!(
+                        "REST API token not found at fallback path {}",
+                        fallback_path.display()
+                    );
                 }
             }
         }
