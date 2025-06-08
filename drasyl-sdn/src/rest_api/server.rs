@@ -55,8 +55,12 @@ impl RestApiServer {
         let api = Router::new()
             .route("/status", get(Self::status))
             .with_state(self.node.clone());
-        let listener = TcpListener::bind(listen).await?;
-        axum::serve(listener, api).await?;
+        let listener = TcpListener::bind(listen)
+            .await
+            .map_err(error::Error::BindError)?;
+        axum::serve(listener, api)
+            .await
+            .map_err(error::Error::ServeError)?;
 
         Ok(())
     }
