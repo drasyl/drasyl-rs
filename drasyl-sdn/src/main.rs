@@ -3,10 +3,9 @@ use drasyl::identity::Identity;
 use drasyl::util;
 use drasyl_sdn::node::SdnNode;
 use drasyl_sdn::rest_api::{RestApiClient, RestApiServer};
-use http_body_util::BodyExt;
 use std::sync::Arc;
 use tokio::signal;
-use tracing::info;
+use tracing::{info, trace};
 
 #[derive(Parser, Debug)]
 #[command(name = "drasyl-sdn")]
@@ -79,10 +78,22 @@ async fn run_sdn_node(
             }
             Ok::<_, std::io::Error>(())
         } => {
+            trace!("Shutdown initiated via SIGTERM.");
             node_clone.shutdown().await;
         }
-        _ = rest_api.bind() => {}
-        _ = node.cancelled() => {},
+        res = rest_api.bind() => {
+            match res {
+                Ok(_) => {
+                    trace!("rest_api shut down");
+                }
+                Err(e) => {
+                    trace!("rest_api failed to bind: {}", e);
+                }
+            }
+        }
+        _ = node.cancelled() => {
+            trace!("Node cancelled.");
+        },
     }
 
     Ok(())

@@ -7,7 +7,6 @@ use crate::rest_api::{RestApiClient, load_auth_token};
 use axum::Json;
 use axum::extract::State;
 use chrono::{DateTime, Local, Utc};
-use clap::Parser;
 use drasyl::identity::PubKey;
 use drasyl::message::ShortId;
 use drasyl::node::{HELLO_TIMEOUT_DEFAULT, NodeOpts};
@@ -239,7 +238,7 @@ pub(crate) struct SuperPeerStatus {
     tcp_port: u16,
     tcp_path: Option<PeerPathInner>,
     session_keys: Option<SessionKeys>,
-    resolved_addrs: Vec<SocketAddr>,
+    resolved_addrs: Option<Vec<SocketAddr>>,
     best_udp_path: Option<PeerPathKey>,
     udp_paths: HashMap<PeerPathKey, PeerPathInner>,
     // generated
@@ -263,7 +262,7 @@ impl SuperPeerStatus {
                 .as_ref()
                 .map(|tcp| tcp.path.inner_store.load().as_ref().clone()),
             session_keys: super_peer.session_keys.clone(),
-            resolved_addrs: super_peer.resolved_addrs().as_ref().clone(),
+            resolved_addrs: super_peer.resolved_addrs().as_ref().map(|v| (**v).clone()),
             best_udp_path: super_peer.best_udp_path_key().cloned(),
             udp_paths,
             reachable: super_peer.is_reachable(),
@@ -294,9 +293,16 @@ impl fmt::Display for SuperPeerStatus {
         //     }
         //     None => writeln!(f, "Session Keys: Not present")?,
         // }
-        writeln!(f, "Resolved Addresses:")?;
-        for addr in &self.resolved_addrs {
-            writeln!(f, "  {}", addr)?;
+        match &self.resolved_addrs {
+            Some(resolved_addrs) => {
+                writeln!(f, "Resolved Addresses:")?;
+                for addr in resolved_addrs {
+                    writeln!(f, "  {}", addr)?;
+                }
+            }
+            None => {
+                writeln!(f, "Resolved Addresses: None")?;
+            }
         }
         writeln!(f, "UDP:")?;
         writeln!(

@@ -142,11 +142,11 @@ fn main() {
     // set a tray event handler that forwards the event and wakes up the event loop
     let proxy = event_loop.create_proxy();
     TrayIconEvent::set_event_handler(Some(move |event| {
-        proxy.send_event(UserEvent::TrayIconEvent(event));
+        let _ = proxy.send_event(UserEvent::TrayIconEvent(event));
     }));
     let proxy = event_loop.create_proxy();
     MenuEvent::set_event_handler(Some(move |event| {
-        proxy.send_event(UserEvent::MenuEvent(event));
+        let _ = proxy.send_event(UserEvent::MenuEvent(event));
     }));
 
     // Starte Tokio Runtime
@@ -171,8 +171,10 @@ fn main() {
                     warn!("Failed to retrieve status: {}", e);
                 }
             }
+            // FIXME: wenn client.status einen ERR gibt, sollten wir den als Status-Event mitschicken. Dann hat die Gui die Chance den fehler anzuzeigen
+            // als test lösch/verschiebe einfach mal deine lokale auth.token datei
             if let Ok(status) = client.status().await {
-                proxy.send_event(UserEvent::Status(status));
+                let _ = proxy.send_event(UserEvent::Status(status));
             }
         }
     });
