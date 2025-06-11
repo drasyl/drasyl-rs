@@ -57,10 +57,10 @@ impl RestApiServer {
             .with_state(self.node.clone());
         let listener = TcpListener::bind(listen)
             .await
-            .map_err(error::Error::BindError)?;
+            .map_err(error::Error::Bind)?;
         axum::serve(listener, api)
             .await
-            .map_err(error::Error::ServeError)?;
+            .map_err(error::Error::Serve)?;
 
         Ok(())
     }

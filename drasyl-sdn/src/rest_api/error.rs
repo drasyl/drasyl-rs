@@ -30,9 +30,9 @@ pub enum Error {
 
     /// Failed to bind the REST API server to the specified address/port
     #[error("Failed to bind REST API server: {0}")]
-    BindError(io::Error),
+    Bind(io::Error),
 
     /// Failed to serve the REST API due to server error
     #[error("Failed to serve REST API: {0}")]
-    ServeError(io::Error),
+    Serve(io::Error),
 }
