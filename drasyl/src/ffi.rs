@@ -6,12 +6,13 @@ use crate::peer;
 use crate::peer::PeersList;
 use crate::peer::SuperPeerUrl;
 use crate::peer::SuperPeerUrlError;
+use std::borrow::Borrow;
 use std::ffi::CStr;
 use std::net::IpAddr;
 use std::os::raw::{c_char, c_int};
-use std::slice;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::{ptr, slice};
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::{Mutex, mpsc};
@@ -27,6 +28,8 @@ const ERR_IO: c_int = -2;
 const ERR_CHANNEL_CLOSED: c_int = -3;
 const ERR_ADDR_PARSE: c_int = -4;
 const ERR_INDEX: c_int = -5;
+const ERR_NULL_POINTER: c_int = -6;
+const ERR_IDENTITY_GENERATION: c_int = -7;
 
 // -101..-300
 impl From<node::Error> for c_int {
@@ -119,10 +122,11 @@ pub extern "C" fn drasyl_recv_buf_new(
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
-pub extern "C" fn drasyl_recv_buf_free(recv_buf: *mut (MessageSender, MessageReceiver)) {
+pub extern "C" fn drasyl_recv_buf_free(recv_buf: *mut (MessageSender, MessageReceiver)) -> c_int {
     unsafe {
         drop(Box::from_raw(recv_buf));
     }
+    0
 }
 
 #[unsafe(no_mangle)]
@@ -187,6 +191,54 @@ pub extern "C" fn drasyl_recv_buf_recv(
 pub extern "C" fn drasyl_version() -> *const u8 {
     static VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "\0");
     VERSION.as_ptr()
+}
+
+/// Extern C function to generate an identity (secret key, public key, and proof of work).
+///
+/// This function fills the provided buffers with the corresponding values.
+/// The caller must ensure that all buffers are non-null and properly sized.
+///
+/// # Arguments
+/// * `sk_buf`   - Pointer to a buffer of at least 64 bytes for the secret key
+/// * `pk_buf`   - Pointer to a buffer of at least 32 bytes for the public key
+/// * `pow_buf`  - Pointer to a buffer of at least 4 bytes for the proof of work
+/// * `pow_diff` - The proof of work difficulty
+///
+/// # Returns
+/// * `0` on success
+/// * `1` if any buffer pointer is null
+/// * `2` if identity generation fails
+#[unsafe(no_mangle)]
+pub extern "C" fn drasyl_generate_identity(
+    sk_buf: *mut u8,
+    pk_buf: *mut u8,
+    pow_buf: *mut u8,
+    pow_diff: u8,
+) -> c_int {
+    // Validate input pointers
+    if sk_buf.is_null() || pk_buf.is_null() || pow_buf.is_null() {
+        return ERR_NULL_POINTER;
+    }
+
+    // Attempt to generate identity
+    let identity = match Identity::generate(pow_diff) {
+        Ok(id) => id,
+        Err(_) => return ERR_IDENTITY_GENERATION,
+    };
+
+    // Borrow inner byte arrays using known fixed-size types
+    let sk_bytes: &[u8; ED25519_SECRETKEYBYTES] = identity.sk.borrow();
+    let pk_bytes: &[u8; ED25519_PUBLICKEYBYTES] = identity.pk.borrow();
+    let pow_bytes: &[u8] = identity.pow.as_bytes();
+
+    // Copy data into provided buffers
+    unsafe {
+        ptr::copy_nonoverlapping(sk_bytes.as_ptr(), sk_buf, ED25519_SECRETKEYBYTES);
+        ptr::copy_nonoverlapping(pk_bytes.as_ptr(), pk_buf, ED25519_PUBLICKEYBYTES);
+        ptr::copy_nonoverlapping(pow_bytes.as_ptr(), pow_buf, 4);
+    }
+
+    0
 }
 
 #[unsafe(no_mangle)]
@@ -379,10 +431,11 @@ pub extern "C" fn drasyl_node_opts_builder_build(
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
-pub extern "C" fn drasyl_node_opts_builder_free(builder: *mut NodeOptsBuilder) {
+pub extern "C" fn drasyl_node_opts_builder_free(builder: *mut NodeOptsBuilder) -> c_int {
     unsafe {
         drop(Box::from_raw(builder));
     }
+    0
 }
 
 //
@@ -460,10 +513,11 @@ pub extern "C" fn drasyl_node_opts_enforce_tcp(opts: &mut NodeOpts) -> bool {
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
-pub extern "C" fn drasyl_node_opts_free(opts: *mut NodeOpts) {
+pub extern "C" fn drasyl_node_opts_free(opts: *mut NodeOpts) -> c_int {
     unsafe {
         drop(Box::from_raw(opts));
     }
+    0
 }
 
 //
@@ -502,10 +556,11 @@ pub extern "C" fn drasyl_node_bind(opts: *mut NodeOpts, bind: *mut *mut NodeBind
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn drasyl_node_bind_free(bind: &mut NodeBind) {
+pub extern "C" fn drasyl_node_bind_free(bind: &mut NodeBind) -> c_int {
     unsafe {
         drop(Box::from_raw(bind));
     }
+    0
 }
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -591,10 +646,11 @@ pub extern "C" fn drasyl_peers_list_peers_len(peers: &mut Vec<Peer>) -> u64 {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn drasyl_peers_list_peers_free(peers: &mut Vec<Peer>) {
+pub extern "C" fn drasyl_peers_list_peers_free(peers: &mut Vec<Peer>) -> c_int {
     unsafe {
         drop(Box::from_raw(peers));
     }
+    0
 }
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
