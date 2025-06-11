@@ -9,17 +9,18 @@ use tray_icon::{
 };
 use winit::{application::ApplicationHandler, event_loop::EventLoop};
 
+#[allow(clippy::large_enum_variant)]
 enum UserEvent {
     TrayIconEvent(TrayIconEvent),
     MenuEvent(MenuEvent),
-    Status(Status),
+    Status(Result<Status, String>),
 }
 
 #[derive(Default)]
 struct DrasylUI {
     tray_icon: Option<TrayIcon>,
     address_item: Option<MenuItem>,
-    status: Option<Status>,
+    status: Option<Result<Status, String>>,
 }
 
 impl DrasylUI {
@@ -98,36 +99,44 @@ impl ApplicationHandler<UserEvent> for DrasylUI {
             // We have to request a redraw here to have the icon actually show up.
             // Winit only exposes a redraw method on the Window so we use core-foundation directly.
             #[cfg(target_os = "macos")]
-            unsafe {
-                use objc2_core_foundation::{CFRunLoopGetMain, CFRunLoopWakeUp};
+            {
+                use objc2_core_foundation::CFRunLoop;
 
-                let rl = CFRunLoopGetMain().unwrap();
-                CFRunLoopWakeUp(&rl);
+                let rl = CFRunLoop::main().unwrap();
+                rl.wake_up();
             }
         }
     }
 
-    fn user_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, event: UserEvent) {
-        // println!("{event:?}");
+    fn user_event(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop, event: UserEvent) {
         match event {
             UserEvent::MenuEvent(menu_event) => {
-                if let Some(menu) = self.address_item.as_mut() {
+                if let (Some(menu), Some(Ok(status))) =
+                    (self.address_item.as_mut(), self.status.as_ref())
+                {
                     if menu_event.id == menu.id() {
-                        if let Some(status) = self.status.as_ref() {
-                            if let Ok(mut clipboard) = Clipboard::new() {
-                                let _ = clipboard.set_text(status.opts.id.pk.to_string());
-                            }
+                        if let Ok(mut clipboard) = Clipboard::new() {
+                            let _ = clipboard.set_text(status.opts.id.pk.to_string());
                         }
                     }
                 }
             }
-            UserEvent::Status(status) => {
-                let pk = status.opts.id.pk;
-                self.status = Some(status);
+            UserEvent::Status(result) => {
                 if let Some(menu) = self.address_item.as_mut() {
-                    menu.set_text(format!("Public key: {}", pk));
-                    menu.set_enabled(true);
+                    match &result {
+                        Ok(status) => {
+                            let pk = status.opts.id.pk;
+                            menu.set_text(format!("Public key: {}", pk));
+                            menu.set_enabled(true);
+                        }
+                        Err(e) => {
+                            menu.set_text(e);
+                            menu.set_enabled(false);
+                        }
+                    }
                 }
+
+                self.status = Some(result);
             }
             _ => {}
         }
@@ -165,16 +174,12 @@ fn main() {
             let client = rest_api::RestApiClient::new();
             match client.status().await {
                 Ok(status) => {
-                    let _ = proxy.send_event(UserEvent::Status(status));
+                    let _ = proxy.send_event(UserEvent::Status(Ok(status)));
                 }
                 Err(e) => {
                     warn!("Failed to retrieve status: {}", e);
+                    let _ = proxy.send_event(UserEvent::Status(Err(e.to_string())));
                 }
-            }
-            // FIXME: wenn client.status einen ERR gibt, sollten wir den als Status-Event mitschicken. Dann hat die Gui die Chance den fehler anzuzeigen
-            // als test lösch/verschiebe einfach mal deine lokale auth.token datei
-            if let Ok(status) = client.status().await {
-                let _ = proxy.send_event(UserEvent::Status(status));
             }
         }
     });
