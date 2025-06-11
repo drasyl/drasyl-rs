@@ -2,14 +2,10 @@ use clap::{Parser, Subcommand};
 use drasyl::identity::Identity;
 use drasyl::util;
 use drasyl_sdn::node::SdnNode;
-use drasyl_sdn::rest_api::{RestApi, load_auth_token};
-use http_body_util::{BodyExt, Empty};
-use hyper::Request;
-use hyper_util::client::legacy::Client;
-use hyper_util::rt::TokioExecutor;
+use drasyl_sdn::rest_api::{RestApiClient, RestApiServer};
 use std::sync::Arc;
 use tokio::signal;
-use tracing::info;
+use tracing::{info, trace};
 
 #[derive(Parser, Debug)]
 #[command(name = "drasyl-sdn")]
@@ -55,7 +51,7 @@ async fn run_sdn_node(
     info!("I am {}", id.pk);
 
     let node = Arc::new(SdnNode::start(id, urls).await);
-    let rest_api = RestApi::new(node.clone());
+    let rest_api = RestApiServer::new(node.clone());
 
     let node_clone = node.clone();
 
@@ -82,45 +78,38 @@ async fn run_sdn_node(
             }
             Ok::<_, std::io::Error>(())
         } => {
+            trace!("Shutdown initiated via SIGTERM.");
             node_clone.shutdown().await;
         }
-        _ = rest_api.bind() => {}
-        _ = node.cancelled() => {},
+        res = rest_api.bind() => {
+            match res {
+                Ok(_) => {
+                    trace!("rest_api shut down");
+                }
+                Err(e) => {
+                    trace!("rest_api failed to bind: {}", e);
+                }
+            }
+        }
+        _ = node.cancelled() => {
+            trace!("Node cancelled.");
+        },
     }
 
     Ok(())
 }
 
 async fn show_status() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-    let client = Client::builder(TokioExecutor::new()).build_http();
-    let token_file = util::get_env(
-        "AUTH_FILE",
-        drasyl_sdn::rest_api::AUTH_FILE_DEFAULT.to_string(),
-    );
-    let auth_token = load_auth_token(&token_file)
-        .map_err(|e| format!("Failed to load auth token {}: {}", token_file, e))?;
+    let client = RestApiClient::new();
 
-    let uri = "http://localhost:22527/status"
-        .parse::<hyper::Uri>()
-        .map_err(|e| format!("Failed to parse URI: {}", e))?;
-    let req = Request::builder()
-        .method("GET")
-        .uri(uri)
-        .header("Authorization", format!("Bearer {}", auth_token))
-        .body(Empty::<bytes::Bytes>::new())?;
-
-    let response = client.request(req).await?;
-    let status_code = response.status();
-
-    if status_code.is_success() {
-        let body_bytes = response.into_body().collect().await?.to_bytes();
-        let body_str = String::from_utf8(body_bytes.to_vec())?;
-        let status: drasyl_sdn::rest_api::Status = serde_json::from_str(&body_str)?;
-
-        println!("{}", status);
-    } else {
-        eprintln!("Failed to retrieve status: HTTP {}", status_code);
-        std::process::exit(1);
+    match client.status().await {
+        Ok(status) => {
+            println!("{}", status);
+        }
+        Err(e) => {
+            eprintln!("Failed to retrieve status: {e}");
+            std::process::exit(1);
+        }
     }
 
     Ok(())
