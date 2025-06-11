@@ -1,0 +1,46 @@
+name: drasyl-ui
+
+on:
+  push:
+    branches:
+      - master
+      - ui
+  pull_request:
+    branches:
+      - master
+      - ui
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        job_name:
+          - macos-arm64
+
+        include:
+          - job_name: macos-arm64
+            os: macOS-latest
+            path: target/release/bundle/osx/*
+
+    name: Build drasyl-ui on ${{ matrix.job_name }}
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install cargo-bundle
+        run: cargo install cargo-bundle
+
+      - name: Build drasyl-ui
+        run: cargo bundle --release
+
+      - name: Upload drasyl-ui artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: drasyl-ui-${{ matrix.job_name }}
+          path: ${{ matrix.path }}
