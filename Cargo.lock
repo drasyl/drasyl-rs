@@ -1658,6 +1658,7 @@ version = "0.1.0"
 dependencies = [
  "arboard",
  "drasyl-sdn",
+ "gtk",
  "image",
  "objc2-core-foundation",
  "tokio",

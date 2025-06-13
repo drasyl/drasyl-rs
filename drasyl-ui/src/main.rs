@@ -1,6 +1,7 @@
 use arboard::Clipboard;
 use drasyl_sdn::rest_api;
 use drasyl_sdn::rest_api::Status;
+use std::sync::{Arc, Mutex};
 use tokio::time::{self, Duration};
 use tracing::warn;
 use tray_icon::{
@@ -17,13 +18,18 @@ enum UserEvent {
 }
 
 #[derive(Default)]
-struct DrasylUI {
+struct DrasylUiInner {
     tray_icon: Option<TrayIcon>,
     address_item: Option<MenuItem>,
     status: Option<Result<Status, String>>,
 }
 
-impl DrasylUI {
+#[derive(Default)]
+struct DrasylUi {
+    inner: Arc<Mutex<DrasylUiInner>>,
+}
+
+impl DrasylUi {
     fn new() -> Self {
         Self {
             ..Default::default()
@@ -35,7 +41,7 @@ impl DrasylUI {
         let icon = load_icon(std::path::Path::new(path));
 
         TrayIconBuilder::new()
-            .with_menu(Box::new(self.new_tray_menu()))
+            .with_menu(Box::new(Self::new_tray_menu(self.inner.clone())))
             .with_tooltip("drasyl")
             .with_icon(icon)
             .with_icon_as_template(true)
@@ -43,7 +49,7 @@ impl DrasylUI {
             .unwrap()
     }
 
-    fn new_tray_menu(&mut self) -> Menu {
+    fn new_tray_menu(inner: Arc<Mutex<DrasylUiInner>>) -> Menu {
         let menu = Menu::new();
 
         // address
@@ -55,7 +61,7 @@ impl DrasylUI {
         if let Err(e) = menu.append(&item) {
             panic!("{e:?}");
         }
-        self.address_item = Some(item);
+        inner.lock().expect("Mutex poisoned").address_item = Some(item);
 
         // separator
         if let Err(e) = menu.append(&PredefinedMenuItem::separator()) {
@@ -66,13 +72,12 @@ impl DrasylUI {
         if let Err(e) = menu.append(&PredefinedMenuItem::quit(Some("Quit drasyl UI"))) {
             panic!("{e:?}");
         }
-        // self.quit_id = Some(item.id().clone());
 
         menu
     }
 }
 
-impl ApplicationHandler<UserEvent> for DrasylUI {
+impl ApplicationHandler<UserEvent> for DrasylUi {
     fn resumed(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {}
 
     fn window_event(
@@ -93,7 +98,7 @@ impl ApplicationHandler<UserEvent> for DrasylUI {
         if winit::event::StartCause::Init == cause {
             #[cfg(not(target_os = "linux"))]
             {
-                self.tray_icon = Some(self.new_tray_icon());
+                self.inner.lock().expect("Mutex poisoned").tray_icon = Some(self.new_tray_icon());
             }
 
             // We have to request a redraw here to have the icon actually show up.
@@ -111,18 +116,20 @@ impl ApplicationHandler<UserEvent> for DrasylUI {
     fn user_event(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop, event: UserEvent) {
         match event {
             UserEvent::MenuEvent(menu_event) => {
-                if let (Some(menu), Some(Ok(status))) =
-                    (self.address_item.as_mut(), self.status.as_ref())
-                {
+                let guard = self.inner.lock().expect("Mutex poisoned");
+                if let Some(menu) = guard.address_item.as_ref() {
                     if menu_event.id == menu.id() {
-                        if let Ok(mut clipboard) = Clipboard::new() {
-                            let _ = clipboard.set_text(status.opts.id.pk.to_string());
+                        if let Some(Ok(status)) = guard.status.as_ref() {
+                            if let Ok(mut clipboard) = Clipboard::new() {
+                                let _ = clipboard.set_text(status.opts.id.pk.to_string());
+                            }
                         }
                     }
                 }
             }
             UserEvent::Status(result) => {
-                if let Some(menu) = self.address_item.as_mut() {
+                let mut guard = self.inner.lock().expect("Mutex poisoned");
+                if let Some(menu) = guard.address_item.as_mut() {
                     match &result {
                         Ok(status) => {
                             let pk = status.opts.id.pk;
@@ -136,7 +143,7 @@ impl ApplicationHandler<UserEvent> for DrasylUI {
                     }
                 }
 
-                self.status = Some(result);
+                guard.status = Some(result);
             }
             _ => {}
         }
@@ -184,7 +191,22 @@ fn main() {
         }
     });
 
-    let mut app = DrasylUI::new();
+    let mut app = DrasylUi::new();
+
+    // Since winit doesn't use gtk on Linux, and we need gtk for
+    // the tray icon to show up, we need to spawn a thread
+    // where we initialize gtk and create the tray_icon
+    #[cfg(target_os = "linux")]
+    {
+        let inner = app.inner.clone();
+        std::thread::spawn(|| {
+            gtk::init().unwrap();
+
+            let _tray_icon = DrasylUI::new_tray_icon(inner);
+
+            gtk::main();
+        });
+    }
 
     if let Err(err) = event_loop.run_app(&mut app) {
         println!("Error: {:?}", err);

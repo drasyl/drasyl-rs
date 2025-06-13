@@ -19,6 +19,9 @@ objc2-core-foundation = { version = "0.3.0", default-features = false, features 
     "CFRunLoop",
 ] }
 
+[target."cfg(target_os = \"linux\")".dependencies]
+gtk = "0.18"
+
 [package.metadata.bundle]
 name = "drasyl UI"
 identifier = "org.drasyl.drasyl-ui"
