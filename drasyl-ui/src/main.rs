@@ -36,17 +36,17 @@ impl DrasylUi {
         }
     }
 
-    fn new_tray_icon(&mut self) -> TrayIcon {
+    fn new_tray_icon(inner: Arc<Mutex<DrasylUiInner>>) {
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/tray-icon.png");
         let icon = load_icon(std::path::Path::new(path));
 
-        TrayIconBuilder::new()
-            .with_menu(Box::new(Self::new_tray_menu(self.inner.clone())))
+        inner.lock().expect("Mutex poisoned").tray_icon = Some(TrayIconBuilder::new()
+            .with_menu(Box::new(Self::new_tray_menu(inner.clone())))
             .with_tooltip("drasyl")
             .with_icon(icon)
             .with_icon_as_template(true)
             .build()
-            .unwrap()
+            .unwrap());
     }
 
     fn new_tray_menu(inner: Arc<Mutex<DrasylUiInner>>) -> Menu {
@@ -98,7 +98,7 @@ impl ApplicationHandler<UserEvent> for DrasylUi {
         if winit::event::StartCause::Init == cause {
             #[cfg(not(target_os = "linux"))]
             {
-                self.inner.lock().expect("Mutex poisoned").tray_icon = Some(self.new_tray_icon());
+                DrasylUi::new_tray_icon(self.inner.clone());
             }
 
             // We have to request a redraw here to have the icon actually show up.
@@ -201,9 +201,7 @@ fn main() {
         let inner = app.inner.clone();
         std::thread::spawn(|| {
             gtk::init().unwrap();
-
-            let _tray_icon = DrasylUI::new_tray_icon(inner);
-
+            DrasylUI::new_tray_icon(inner);
             gtk::main();
         });
     }
