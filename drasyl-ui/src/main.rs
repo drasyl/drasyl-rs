@@ -37,7 +37,7 @@ impl DrasylUi {
     }
 
     fn new_tray_icon(inner: Arc<Mutex<DrasylUiInner>>) {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/tray-icon.png");
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/resources/tray-icon.png");
         let icon = load_icon(std::path::Path::new(path));
 
         inner.lock().expect("Mutex poisoned").tray_icon = Some(TrayIconBuilder::new()

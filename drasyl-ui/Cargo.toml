@@ -25,5 +25,5 @@ gtk = "0.18"
 [package.metadata.bundle]
 name = "drasyl UI"
 identifier = "org.drasyl.drasyl-ui"
-icon = ["./drasyl-ui/assets/app-icon*.png"]
-osx_info_plist_exts = ["./drasyl-ui/osx_info_plist_exts/*"]
+icon = ["drasyl-ui/resources/app-icon*.png"]
+osx_info_plist_exts = ["drasyl-ui/resources/info/*"]
