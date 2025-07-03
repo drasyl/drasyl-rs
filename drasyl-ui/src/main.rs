@@ -170,7 +170,7 @@ fn main() {
     trace!("Starting drasyl-ui");
 
     #[allow(unused_variables)]
-    let (tx, mut rx): (Sender<UserEvent>, Receiver<UserEvent>) = channel(100);
+    let (tx, rx): (Sender<UserEvent>, Receiver<UserEvent>) = channel(100);
     let mut app = DrasylUi::new(tx.clone());
 
     let event_loop = EventLoop::<UserEvent>::with_user_event().build().unwrap();
