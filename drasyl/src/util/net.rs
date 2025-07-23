@@ -104,10 +104,11 @@ pub fn get_addrs() -> io::Result<Vec<(String, IpAddr)>> {
                 && !iface.name.starts_with("utun")
                 && !iface.name.starts_with("tun")
                 && !iface.name.starts_with("zt")
+                && !iface.name.starts_with("ZeroTier")
                 && !iface.name.starts_with("drasyl")
                 && !iface.name.starts_with("docker")
                 && !iface.name.starts_with("br-")
-        }) // FIXME: read from NodeOpts
+        }) // TODO: read from NodeOpts
         .filter_map(|iface| match iface.addr {
             IfAddr::V4(v4) if ip_is_valid_v4(&v4.ip) => Some((iface.name, IpAddr::V4(v4.ip))),
             IfAddr::V6(v6) if ip_is_valid_v6(&v6.ip) => Some((iface.name, IpAddr::V6(v6.ip))),
