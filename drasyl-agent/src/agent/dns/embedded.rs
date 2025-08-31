@@ -81,57 +81,6 @@ impl AgentDnsInterface for AgentDns {
         self.server_ip.load(SeqCst) == ip.to_bits()
     }
 
-    async fn shutdown(&self) {
-        trace!("Embedded DNS: Shutting down DNS");
-        #[cfg(target_os = "macos")]
-        {
-            if let Err(e) = scutil_remove().await {
-                error!("Failed to remove DNS configuration: {}", e);
-            }
-        }
-    }
-
-    async fn update_network_hostnames(&self, networks: &mut MutexGuard<'_, HashMap<Url, Network>>) {
-        // we do not support updating hostnames for a single network
-        self.update_all_hostnames(networks).await;
-    }
-
-    async fn update_all_hostnames(&self, networks: &mut MutexGuard<'_, HashMap<Url, Network>>) {
-        trace!("Embedded DNS: Update all hostnames");
-        // update DNS entries
-        self.embedded_catalog
-            .store(Arc::new(Self::build_catalog(networks)));
-
-        let mut i = 0;
-        for (_, network) in networks.iter() {
-            if !network.disabled
-                && let Some(state) = network.state.as_ref()
-                && i == 0
-            {
-                // Calculate DNS server IP: it's the IP address in the current subnet BEFORE the broadcast address
-                let network = Ipv4Net::new(state.ip, state.subnet.prefix_len())
-                    .expect("Invalid IP/netmask combination");
-                let broadcast = network.broadcast();
-                // Decrement the broadcast address by 1 to get the DNS server IP
-                let dns_server = Ipv4Addr::from(u32::from(broadcast).saturating_sub(1));
-                trace!("DNS server IP calculated: {}", dns_server);
-
-                self.server_ip.store(dns_server.to_bits(), SeqCst);
-
-                #[cfg(target_os = "macos")]
-                {
-                    // Add DNS configuration with scutil
-                    let domains = vec!["drasyl.network"];
-                    if let Err(e) = scutil_add(&dns_server, &domains).await {
-                        error!("Failed to add DNS configuration: {}", e);
-                    }
-                }
-
-                i += 1;
-            }
-        }
-    }
-
     async fn on_packet(
         &self,
         message_bytes: &[u8],
@@ -236,6 +185,52 @@ impl AgentDnsInterface for AgentDns {
         }
         trace!("DNS packet processing completed");
         true
+    }
+
+    async fn update_networks(&self, networks: &mut MutexGuard<'_, HashMap<Url, Network>>) {
+        trace!("Embedded DNS: Update all hostnames");
+        // update DNS entries
+        self.embedded_catalog
+            .store(Arc::new(Self::build_catalog(networks)));
+
+        let mut i = 0;
+        for (_, network) in networks.iter() {
+            if !network.disabled
+                && let Some(state) = network.state.as_ref()
+                && i == 0
+            {
+                // Calculate DNS server IP: it's the IP address in the current subnet BEFORE the broadcast address
+                let network = Ipv4Net::new(state.ip, state.subnet.prefix_len())
+                    .expect("Invalid IP/netmask combination");
+                let broadcast = network.broadcast();
+                // Decrement the broadcast address by 1 to get the DNS server IP
+                let dns_server = Ipv4Addr::from(u32::from(broadcast).saturating_sub(1));
+                trace!("DNS server IP calculated: {}", dns_server);
+
+                self.server_ip.store(dns_server.to_bits(), SeqCst);
+
+                #[cfg(target_os = "macos")]
+                {
+                    // Add DNS configuration with scutil
+                    let domains = vec!["drasyl.network"];
+                    if let Err(e) = scutil_add(&dns_server, &domains).await {
+                        error!("Failed to add DNS configuration: {}", e);
+                    }
+                }
+
+                i += 1;
+            }
+        }
+    }
+
+    async fn shutdown(&self) {
+        trace!("Embedded DNS: Shutting down DNS");
+        #[cfg(target_os = "macos")]
+        {
+            if let Err(e) = scutil_remove().await {
+                error!("Failed to remove DNS configuration: {}", e);
+            }
+        }
     }
 }
 

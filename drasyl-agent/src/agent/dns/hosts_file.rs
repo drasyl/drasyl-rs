@@ -86,22 +86,17 @@ impl AgentDns {
 }
 
 impl AgentDnsInterface for AgentDns {
+    async fn update_networks(&self, networks: &mut MutexGuard<'_, HashMap<Url, Network>>) {
+        trace!("Hosts File DNS: Update all hostnames");
+        if let Err(e) = Self::update_hosts_file(networks).await {
+            error!("failed to update /etc/hosts: {}", e);
+        }
+    }
+
     async fn shutdown(&self) {
         trace!("Hosts File DNS: Shutting down DNS");
         if let Err(e) = Self::cleanup_hosts_file() {
             error!("Failed to cleanup /etc/hosts: {}", e);
-        }
-    }
-
-    async fn update_network_hostnames(&self, networks: &mut MutexGuard<'_, HashMap<Url, Network>>) {
-        // we do not support updating hostnames for a single network
-        self.update_all_hostnames(networks).await;
-    }
-
-    async fn update_all_hostnames(&self, networks: &mut MutexGuard<'_, HashMap<Url, Network>>) {
-        trace!("Hosts File DNS: Update all hostnames");
-        if let Err(e) = Self::update_hosts_file(networks).await {
-            error!("failed to update /etc/hosts: {}", e);
         }
     }
 }

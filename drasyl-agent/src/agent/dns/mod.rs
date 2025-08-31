@@ -13,20 +13,6 @@ pub trait AgentDnsInterface {
         false
     }
 
-    async fn shutdown(&self) {
-        // do nothing
-    }
-
-    #[allow(unused_variables)]
-    async fn update_network_hostnames(&self, networks: &mut MutexGuard<'_, HashMap<Url, Network>>) {
-        // do nothing
-    }
-
-    #[allow(unused_variables)]
-    async fn update_all_hostnames(&self, networks: &mut MutexGuard<'_, HashMap<Url, Network>>) {
-        // do nothing
-    }
-
     #[allow(unused_variables)]
     async fn on_packet(
         &self,
@@ -39,6 +25,15 @@ pub trait AgentDnsInterface {
     ) -> bool {
         // do nothing
         false
+    }
+
+    #[allow(unused_variables)]
+    async fn update_networks(&self, networks: &mut MutexGuard<'_, HashMap<Url, Network>>) {
+        // do nothing
+    }
+
+    async fn shutdown(&self) {
+        // do nothing
     }
 }
 

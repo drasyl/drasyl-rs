@@ -232,7 +232,7 @@ impl AgentInner {
                 match current.as_ref().map(|state| state.hostnames.clone()) {
                     Some(current_hostnames) if current_hostnames == desired.hostnames => {}
                     _ => {
-                        self.dns.update_network_hostnames(networks).await;
+                        self.dns.update_networks(networks).await;
                     }
                 }
             }
@@ -282,7 +282,7 @@ impl AgentInner {
                 use crate::agent::dns::AgentDnsInterface;
 
                 trace!("Update DNS");
-                self.dns.update_all_hostnames(networks).await;
+                self.dns.update_networks(networks).await;
             }
         }
     }
